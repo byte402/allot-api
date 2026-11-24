@@ -1,6 +1,6 @@
 # allot-api
 
-The Allot sample **x402** API, a Cloudflare Worker. It sells a live price of a Robinhood Chain market for **0.01 USDG**.
+The Allot sample **x402** API, a Cloudflare Worker. It sells live data from Robinhood Chain mainnet, paid per call in **USDG**.
 
 Try it: https://allot-api.polished-dream-0948.workers.dev/v1/price?symbol=NVDA (answers `402 Payment Required`)
 
@@ -9,10 +9,16 @@ Try it: https://allot-api.polished-dream-0948.workers.dev/v1/price?symbol=NVDA (
 | Path | Price | Returns |
 | --- | --- | --- |
 | `/` | free | info, symbols, payee |
-| `/health` | free | whether the price source answers |
-| `/v1/price?symbol=NVDA` | 0.01 USDG | a live quote of 1,000 USDG via KyberSwap on Robinhood Chain |
+| `/health` | free | whether the price source and the chain answer |
+| `/v1/price?symbol=NVDA` | 0.01 USDG | one market price, from a live quote of 1,000 USDG via KyberSwap |
+| `/v1/prices` | 0.02 USDG | every market price in one call |
+| `/v1/quote?from=USDG&to=NVDA&amount=100` | 0.01 USDG | a swap quote: amount out, rate, USD values, gas and venues. A quote only, nothing is swapped |
+| `/v1/wallet?address=0x…` | 0.01 USDG | ETH, USDG and market token balances of an address (non-zero only) |
+| `/v1/chain` | 0.005 USDG | latest block, average block time, gas price, base fee and USDG total supply |
 
-Symbols: ETH, BTC, NVDA, TSLA, AAPL, AMZN, GOOGL, META, MSFT, SPY, QQQ, GLD, COIN, MSTR.
+Markets: ETH, BTC, NVDA, TSLA, AAPL, AMZN, GOOGL, META, MSFT, SPY, QQQ, GLD, COIN, MSTR. `/v1/quote` also takes USDG.
+
+Every answer is read live from Robinhood Chain mainnet or KyberSwap at request time. The paid resource is canonical (symbols upper case, addresses lower case), so a payment buys exactly the request it was offered for.
 
 ## Payer settlement: no key, no funds on the server
 
@@ -20,7 +26,7 @@ x402 v2 `exact` on USDG with `extra.settlement: "payer"`:
 
 1. Without payment the API answers 402 with an offer and a one-time nonce: an HMAC of the resource and an expiry, so no storage is needed.
 2. The payer settles its own EIP-3009 authorization on chain and sends the transaction hash in `PAYMENT-SIGNATURE`.
-3. The API reads the receipt from Robinhood Chain and checks: the transaction succeeded, a USDG transfer of at least the price reached the payee, and `AuthorizationUsed` carries the nonce this API issued.
+3. The API reads the receipt from Robinhood Chain and checks: the transaction succeeded, a USDG transfer of at least that endpoint's price reached the payee, and `AuthorizationUsed` carries the nonce this API issued.
 4. One transaction, one answer. A replayed transaction is refused.
 
 The server never holds a private key or funds.
@@ -33,6 +39,7 @@ The server never holds a private key or funds.
 
 ```
 npx -y github:byte402/allot-connector pay https://your-worker.workers.dev/v1/price?symbol=NVDA --confirm 0.01
+npx -y github:byte402/allot-connector pay https://your-worker.workers.dev/v1/prices --confirm 0.02
 ```
 
 ## License
