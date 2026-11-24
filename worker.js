@@ -124,16 +124,17 @@ async function chainStats() {
     usdgTotalSupply: fmtUnits(supply, 6), network: "Robinhood Chain mainnet (4663)", at: new Date().toISOString() };
 }
 
-// every paid route: its price in USDG base units, how to read and canonicalise its query, and how to fetch the data
+// every paid route: its price in USDG base units (6 decimals: 10000n = 0.01 USDG), an optional example path for the index,
+// how to read and canonicalise its query, and how to fetch the data. To sell your own data, add one entry here.
 const ROUTES = {
-  "/v1/price": { price: 10000n, parse: (q) => { const symbol = String(q.get("symbol") || "NVDA").toUpperCase(); if (!MARKETS[symbol]) throw { error: "unknown symbol", symbols: Object.keys(MARKETS) }; return { query: `symbol=${symbol}`, run: () => livePrice(symbol) }; } },
+  "/v1/price": { price: 10000n, ex: "/v1/price?symbol=NVDA", parse: (q) => { const symbol = String(q.get("symbol") || "NVDA").toUpperCase(); if (!MARKETS[symbol]) throw { error: "unknown symbol", symbols: Object.keys(MARKETS) }; return { query: `symbol=${symbol}`, run: () => livePrice(symbol) }; } },
   "/v1/prices": { price: 20000n, parse: () => ({ query: "", run: allPrices }) },
-  "/v1/quote": { price: 10000n, parse: (q) => { const from = String(q.get("from") || "USDG").toUpperCase(), to = String(q.get("to") || "").toUpperCase(), amount = String(q.get("amount") || "");
+  "/v1/quote": { price: 10000n, ex: "/v1/quote?from=USDG&to=NVDA&amount=100", parse: (q) => { const from = String(q.get("from") || "USDG").toUpperCase(), to = String(q.get("to") || "").toUpperCase(), amount = String(q.get("amount") || "");
     if (!TOKENS[from] || !TOKENS[to] || from === to) throw { error: "from and to must be two different tokens", tokens: Object.keys(TOKENS) };
     let units; try { units = toUnits(amount, TOKENS[from][1]); } catch (e) { throw { error: e.message }; }
     if (units <= 0n) throw { error: "amount must be more than 0" };
     return { query: `from=${from}&to=${to}&amount=${amount}`, run: () => swapQuote(from, to, amount) }; } },
-  "/v1/wallet": { price: 10000n, parse: (q) => { const address = String(q.get("address") || "").toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(address)) throw { error: "address must be a 0x address" }; return { query: `address=${address}`, run: () => walletBalances(address) }; } },
+  "/v1/wallet": { price: 10000n, ex: "/v1/wallet?address=0x…", parse: (q) => { const address = String(q.get("address") || "").toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(address)) throw { error: "address must be a 0x address" }; return { query: `address=${address}`, run: () => walletBalances(address) }; } },
   "/v1/chain": { price: 5000n, parse: () => ({ query: "", run: chainStats }) },
 };
 const usdg = (p) => fmtUnits(p, 6) + " USDG";
@@ -142,9 +143,9 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "payment-signature, content-type" } });
-    if (url.pathname === "/") return json({ name: "Allot sample x402 API", endpoints: { "/v1/price?symbol=NVDA": usdg(ROUTES["/v1/price"].price), "/v1/prices": usdg(ROUTES["/v1/prices"].price), "/v1/quote?from=USDG&to=NVDA&amount=100": usdg(ROUTES["/v1/quote"].price), "/v1/wallet?address=0x…": usdg(ROUTES["/v1/wallet"].price), "/v1/chain": usdg(ROUTES["/v1/chain"].price) }, symbols: Object.keys(MARKETS), tokens: Object.keys(TOKENS), network: "eip155:4663", asset: USDG, payTo: env.PAY_TO });
+    if (url.pathname === "/") return json({ name: "Allot sample x402 API", endpoints: Object.fromEntries(Object.entries(ROUTES).map(([p, r]) => [r.ex || p, usdg(r.price)])), symbols: Object.keys(MARKETS), tokens: Object.keys(TOKENS), network: "eip155:4663", asset: USDG, payTo: env.PAY_TO });
     // free check, no data: are the sources reachable from here? Lets anyone test before paying
-    if (url.pathname === "/health") { let priceSource, chain; try { await livePrice("NVDA"); priceSource = "ok"; } catch (e) { priceSource = e.message; } try { await rpc("eth_blockNumber", []); chain = "ok"; } catch (e) { chain = e.message; } return json({ ok: priceSource === "ok" && chain === "ok", priceSource, chain, version: "4" }); }
+    if (url.pathname === "/health") { let priceSource, chain; try { await livePrice("NVDA"); priceSource = "ok"; } catch (e) { priceSource = e.message; } try { await rpc("eth_blockNumber", []); chain = "ok"; } catch (e) { chain = e.message; } return json({ ok: priceSource === "ok" && chain === "ok", priceSource, chain, version: "4.1" }); }
     const route = ROUTES[url.pathname];
     if (!route) return json({ error: "not found", endpoints: Object.keys(ROUTES) }, 404);
     if (!/^0x[0-9a-fA-F]{40}$/.test(env.PAY_TO || "") || String(env.CHALLENGE_SECRET || "").length < 32) return json({ error: "API not configured yet: set PAY_TO (address) and CHALLENGE_SECRET (secret, 32+ characters) in Settings, Variables and Secrets" }, 503);
