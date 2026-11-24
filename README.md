@@ -42,6 +42,24 @@ npx -y github:byte402/allot-connector pay https://your-worker.workers.dev/v1/pri
 npx -y github:byte402/allot-connector pay https://your-worker.workers.dev/v1/prices --confirm 0.02
 ```
 
+## Add your own endpoint
+
+Every paid route is one entry in `ROUTES` in `worker.js`: a price in USDG base units (6 decimals, `10000n` = 0.01 USDG), a canonical query, and the data to return. The free index at `/` lists every route and its price automatically.
+
+```js
+// inside const ROUTES = { … }
+"/v1/gas": { price: 1000n, parse: () => ({ query: "", run: async () => ({
+  gasPriceGwei: Number(BigInt(await rpc("eth_gasPrice", []))) / 1e9,
+  at: new Date().toISOString(),
+}) }) },
+```
+
+For a route that takes parameters, read them in `parse(q)`, reject bad input by throwing `{ error: "…" }` (answered as 400 before any payment), and return the canonical query so a payment buys exactly that request. See `/v1/quote` and `/v1/wallet` in `worker.js`.
+
+Check it: `curl -i https://your-worker.workers.dev/v1/gas` must answer 402 with the offer. Buyers add your `PAY_TO` to their AI's approved payees, then pay with the connector.
+
+Guide: https://allot.dev/build
+
 ## License
 
 MIT
