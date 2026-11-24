@@ -27,7 +27,7 @@ x402 v2 `exact` on USDG with `extra.settlement: "payer"`:
 1. Without payment the API answers 402 with an offer and a one-time nonce: an HMAC of the resource and an expiry, so no storage is needed.
 2. The payer settles its own EIP-3009 authorization on chain and sends the transaction hash in `PAYMENT-SIGNATURE`.
 3. The API reads the receipt from Robinhood Chain and checks: the transaction succeeded, a USDG transfer of at least that endpoint's price reached the payee, and `AuthorizationUsed` carries the nonce this API issued.
-4. One transaction, one answer. A replayed transaction is refused.
+4. One transaction, one answer. A replayed transaction is refused. Settled transactions are remembered in Cloudflare's cache, which is kept per data center: for strict one-time use everywhere, store them in Workers KV or a Durable Object.
 
 The server never holds a private key or funds.
 
