@@ -10,6 +10,7 @@ Try it: https://allot-api.polished-dream-0948.workers.dev/v1/price?symbol=NVDA (
 | --- | --- | --- |
 | `/` | free | info, symbols, payee |
 | `/health` | free | whether the price source and the chain answer |
+| `/version` | free | version, source repo and the commit this deployment says it runs |
 | `/v1/price?symbol=NVDA` | 0.01 USDG | one market price, from a live quote of 1,000 USDG via KyberSwap |
 | `/v1/prices` | 0.02 USDG | every market price in one call |
 | `/v1/quote?from=USDG&to=NVDA&amount=100` | 0.01 USDG | a swap quote: amount out, rate, USD values, gas and venues. A quote only, nothing is swapped |
@@ -35,6 +36,7 @@ The server never holds a private key or funds.
 
 1. Create a Cloudflare Worker and paste `worker.js`.
 2. Set `PAY_TO` (the address that receives payments) and the secret `CHALLENGE_SECRET` (32+ random characters).
+   Optional: set `GIT_COMMIT` to the commit of this repo you copied `worker.js` from. `/version` shows it with a link to that exact file.
 3. Pay it with [allot-connector](https://github.com/byte402/allot-connector):
 
 ```
@@ -59,6 +61,10 @@ For a route that takes parameters, read them in `parse(q)`, reject bad input by 
 Check it: `curl -i https://your-worker.workers.dev/v1/gas` must answer 402 with the offer. Buyers add your `PAY_TO` to their AI's approved payees, then pay with the connector.
 
 Guide: https://allot.dev/build
+
+## What runs where
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the vault contracts, the connector, this API and the site, and what each one can and cannot do.
 
 ## License
 

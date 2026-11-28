@@ -9,9 +9,11 @@
 // sends the transaction hash. This server holds no private key and no funds: it only reads the receipt from
 // Robinhood Chain and checks the exact transfer before it serves the data.
 // env: PAY_TO (address that receives payments), CHALLENGE_SECRET (any long random string, used to sign nonces)
+// optional: GIT_COMMIT (the commit of github.com/byte402/allot-api this code was copied from, shown at /version)
 const RPC = "https://rpc.mainnet.chain.robinhood.com", KYBER = "https://aggregator-api.kyberswap.com/robinhood/api/v1";
 const USDG = "0x5fc5360d0400a0fd4f2af552add042d716f1d168";
-const UA = "allot-api/0.2 (+https://allot.dev)";
+const VERSION = "4.2.0", SOURCE = "https://github.com/byte402/allot-api";
+const UA = `allot-api/${VERSION} (+https://allot.dev)`;
 const T_TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const T_AUTH_USED = "0x98de503528ee59b575ef0c0a2576a82497bfc029a5685b209e9ec333479b10a5";
 const MARKETS = { ETH: ["0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", 18], BTC: ["0xcec185eb182c47d1ba1efc84e6959e18cd620be4", 8], NVDA: ["0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec", 18], TSLA: ["0x322f0929c4625ed5bad873c95208d54e1c003b2d", 18], AAPL: ["0xaf3d76f1834a1d425780943c99ea8a608f8a93f9", 18], AMZN: ["0x12f190a9f9d7d37a250758b26824b97ce941bf54", 18], GOOGL: ["0x2e0847e8910a9732eb3fb1bb4b70a580adad4fe3", 18], META: ["0xc0d6457c16cc70d6790dd43521c899c87ce02f35", 18], MSFT: ["0xe93237c50d904957cf27e7b1133b510c669c2e74", 18], SPY: ["0x117cc2133c37b721f49de2a7a74833232b3b4c0c", 18], QQQ: ["0xd5f3879160bc7c32ebb4dc785f8a4f505888de68", 18], GLD: ["0xc9a981fee1f9dec688bb123ccdecc63d0debfc4e", 18], COIN: ["0x6330d8c3178a418788df01a47479c0ce7ccf450b", 18], MSTR: ["0xec262a75e413fafd0df80480274532c79d42da09", 18] };
@@ -143,9 +145,13 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "payment-signature, content-type" } });
-    if (url.pathname === "/") return json({ name: "Allot sample x402 API", endpoints: Object.fromEntries(Object.entries(ROUTES).map(([p, r]) => [r.ex || p, usdg(r.price)])), symbols: Object.keys(MARKETS), tokens: Object.keys(TOKENS), network: "eip155:4663", asset: USDG, payTo: env.PAY_TO });
+    if (url.pathname === "/") return json({ name: "Allot sample x402 API", endpoints: Object.fromEntries(Object.entries(ROUTES).map(([p, r]) => [r.ex || p, usdg(r.price)])), symbols: Object.keys(MARKETS), tokens: Object.keys(TOKENS), network: "eip155:4663", asset: USDG, payTo: env.PAY_TO, version: VERSION, source: SOURCE });
+    // free: which code is this? The deployer sets GIT_COMMIT; compare it with the repo's history
+    if (url.pathname === "/version") { const c = lower(env.GIT_COMMIT), m = env.CF_VERSION_METADATA || {}, ok = /^[0-9a-f]{7,40}$/.test(c);
+      return json({ name: "allot-api", version: VERSION, source: SOURCE, commit: ok ? c : null, code: ok ? `${SOURCE}/blob/${c}/worker.js` : `${SOURCE}/blob/main/worker.js`, deployment: m.id ? { id: m.id, tag: m.tag || null, at: m.timestamp || null } : null,
+        note: "Set by whoever deployed this worker. A server cannot prove its own code: check that the answers and the on-chain checks behave as the source says." }); }
     // free check, no data: are the sources reachable from here? Lets anyone test before paying
-    if (url.pathname === "/health") { let priceSource, chain; try { await livePrice("NVDA"); priceSource = "ok"; } catch (e) { priceSource = e.message; } try { await rpc("eth_blockNumber", []); chain = "ok"; } catch (e) { chain = e.message; } return json({ ok: priceSource === "ok" && chain === "ok", priceSource, chain, version: "4.1" }); }
+    if (url.pathname === "/health") { let priceSource, chain; try { await livePrice("NVDA"); priceSource = "ok"; } catch (e) { priceSource = e.message; } try { await rpc("eth_blockNumber", []); chain = "ok"; } catch (e) { chain = e.message; } return json({ ok: priceSource === "ok" && chain === "ok", priceSource, chain, version: VERSION }); }
     const route = ROUTES[url.pathname];
     if (!route) return json({ error: "not found", endpoints: Object.keys(ROUTES) }, 404);
     if (!/^0x[0-9a-fA-F]{40}$/.test(env.PAY_TO || "") || String(env.CHALLENGE_SECRET || "").length < 32) return json({ error: "API not configured yet: set PAY_TO (address) and CHALLENGE_SECRET (secret, 32+ characters) in Settings, Variables and Secrets" }, 503);
