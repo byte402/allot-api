@@ -2,7 +2,7 @@
 
 The Allot sample **x402** API. One file, `worker.js`, runs on Netlify (deployed from this repo) or as a Cloudflare Worker. It sells live data from Robinhood Chain mainnet, paid per call in **USDG**.
 
-Try it: https://allot-api.polished-dream-0948.workers.dev/v1/price?symbol=NVDA (answers `402 Payment Required`)
+Try it: https://allot-api.netlify.app/v1/price?symbol=NVDA (answers `402 Payment Required`)
 
 ## Endpoints
 
