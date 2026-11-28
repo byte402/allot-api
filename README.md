@@ -1,6 +1,6 @@
 # allot-api
 
-The Allot sample **x402** API, a Cloudflare Worker. It sells live data from Robinhood Chain mainnet, paid per call in **USDG**.
+The Allot sample **x402** API. One file, `worker.js`, runs on Netlify (deployed from this repo) or as a Cloudflare Worker. It sells live data from Robinhood Chain mainnet, paid per call in **USDG**.
 
 Try it: https://allot-api.polished-dream-0948.workers.dev/v1/price?symbol=NVDA (answers `402 Payment Required`)
 
@@ -28,20 +28,33 @@ x402 v2 `exact` on USDG with `extra.settlement: "payer"`:
 1. Without payment the API answers 402 with an offer and a one-time nonce: an HMAC of the resource and an expiry, so no storage is needed.
 2. The payer settles its own EIP-3009 authorization on chain and sends the transaction hash in `PAYMENT-SIGNATURE`.
 3. The API reads the receipt from Robinhood Chain and checks: the transaction succeeded, a USDG transfer of at least that endpoint's price reached the payee, and `AuthorizationUsed` carries the nonce this API issued.
-4. One transaction, one answer. A replayed transaction is refused. Settled transactions are remembered in Cloudflare's cache, which is kept per data center: for strict one-time use everywhere, store them in Workers KV or a Durable Object.
+4. One transaction, one answer. A replayed transaction is refused, in any letter case. On Netlify settled transactions are kept in Netlify Blobs (strong consistency); on Cloudflare in the cache, which is per data center.
 
 The server never holds a private key or funds.
 
 ## Deploy
 
-1. Create a Cloudflare Worker and paste `worker.js`.
-2. Set `PAY_TO` (the address that receives payments) and the secret `CHALLENGE_SECRET` (32+ random characters).
-   Optional: set `GIT_COMMIT` to the commit of this repo you copied `worker.js` from. `/version` shows it with a link to that exact file.
-3. Pay it with [allot-connector](https://github.com/byte402/allot-connector):
+### Netlify (deploys straight from GitHub)
+
+1. On Netlify, **Add new project → Import an existing project → GitHub**, and pick this repo. The settings come from `netlify.toml`, so leave the build fields as they are.
+2. In **Project configuration → Environment variables**, add `PAY_TO` (the address that receives payments) and `CHALLENGE_SECRET` (32+ random characters, marked secret).
+3. Deploy. Every commit to `main` deploys again on its own.
+
+`netlify/functions/api.mjs` serves every path with `worker.js`. Settled transactions are kept in Netlify Blobs with strong consistency, so a transaction that bought an answer is refused everywhere. The build writes the commit it deploys into `netlify/functions/commit.mjs`, so `/version` names that commit with no manual step.
+
+### Cloudflare Workers
+
+1. Create a Worker and paste `worker.js`.
+2. Set `PAY_TO` and the secret `CHALLENGE_SECRET`. Optional: `GIT_COMMIT`, the commit you copied `worker.js` from.
+3. Settled transactions are remembered in Cloudflare's cache, which is per data center.
+
+### Pay it
+
+Pay it with [allot-connector](https://github.com/byte402/allot-connector):
 
 ```
-npx -y github:byte402/allot-connector pay https://your-worker.workers.dev/v1/price?symbol=NVDA --confirm 0.01
-npx -y github:byte402/allot-connector pay https://your-worker.workers.dev/v1/prices --confirm 0.02
+npx -y github:byte402/allot-connector pay https://your-api/v1/price?symbol=NVDA --confirm 0.01
+npx -y github:byte402/allot-connector pay https://your-api/v1/prices --confirm 0.02
 ```
 
 ## Add your own endpoint
@@ -58,7 +71,7 @@ Every paid route is one entry in `ROUTES` in `worker.js`: a price in USDG base u
 
 For a route that takes parameters, read them in `parse(q)`, reject bad input by throwing `{ error: "…" }` (answered as 400 before any payment), and return the canonical query so a payment buys exactly that request. See `/v1/quote` and `/v1/wallet` in `worker.js`.
 
-Check it: `curl -i https://your-worker.workers.dev/v1/gas` must answer 402 with the offer. Buyers add your `PAY_TO` to their AI's approved payees, then pay with the connector.
+Check it: `curl -i https://your-api/v1/gas` must answer 402 with the offer. Buyers add your `PAY_TO` to their AI's approved payees, then pay with the connector.
 
 Guide: https://allot.dev/build
 

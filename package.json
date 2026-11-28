@@ -1,0 +1,11 @@
+{
+  "name": "allot-api",
+  "version": "4.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Allot sample x402 API: live Robinhood Chain data, paid per call in USDG",
+  "license": "MIT",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.12"
+  }
+}

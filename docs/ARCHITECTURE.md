@@ -8,7 +8,7 @@ Allot lets an AI agent pay for x402 APIs in USDG on Robinhood Chain (chain id 46
 | --- | --- | --- | --- |
 | **AllotVault + AllotFactory** | Robinhood Chain mainnet | no | yes, the owner's USDG, under the vault rules |
 | **allot-connector** | the user's own machine (MCP server or terminal) | the AI's agent key only | no |
-| **allot-api** (this repo) | a Cloudflare Worker | no | no, payments go straight to `PAY_TO` |
+| **allot-api** (this repo) | a Netlify Function deployed from this repo (or a Cloudflare Worker) | no | no, payments go straight to `PAY_TO` |
 | **allot.dev** | GitHub Pages, static files | no | no |
 
 ```
@@ -36,14 +36,14 @@ Events (`AgentSet`, `PayeeSet`, `Paid`, `Authorized`, `Released`, `Frozen`, `Wit
 - It holds only the agent key, read from the user's local config. A leaked agent key is still bound by the vault rules above.
 - Every transaction is simulated on mainnet with `eth_simulateV1` before it is sent. In the terminal nothing is sent until the user repeats the command with `--confirm <max amount>`.
 
-## 3. allot-api (Cloudflare Worker)
+## 3. allot-api (Netlify Function or Cloudflare Worker)
 
 - A sample x402 seller. Paid routes answer `402` with an offer and a one-time nonce (an HMAC of the resource and an expiry, so no storage).
 - Payer settlement: the buyer settles its own authorization and sends the transaction hash. The worker reads the receipt from Robinhood Chain and checks the transfer to `PAY_TO`, the price and the `AuthorizationUsed` nonce before it answers.
-- Settled transactions are remembered in Cloudflare's cache for a day, which is per data center. For strict one-time use everywhere, use Workers KV or a Durable Object.
-- `/version` reports the version, this repo and `GIT_COMMIT` as set by the deployer.
+- One transaction buys one answer. On Netlify settled transactions are kept in Netlify Blobs with strong consistency, so a replay is refused everywhere. On Cloudflare they sit in the cache for a day, per data center. Hashes are compared in lower case, so a replay in another letter case is refused too.
+- `/version` reports the version, this repo and the commit. On Netlify the build writes the commit it deploys; on Cloudflare the deployer sets `GIT_COMMIT`.
 
-**What `/version` does not prove.** A server cannot prove which code it runs; `GIT_COMMIT` is a statement by the deployer. What anyone can check is behaviour: the worker never asks for a key, every payment it accepts is a real on-chain transfer to the published `PAY_TO`, and the source here is short enough to read in one sitting.
+**What `/version` does not prove.** A server cannot prove which code it runs. On Netlify the commit comes from the build that deployed this repo, which is as close as hosting gets, but it is still reported by the server itself. What anyone can check is behaviour: the worker never asks for a key, every payment it accepts is a real on-chain transfer to the published `PAY_TO`, and the source here is short enough to read in one sitting.
 
 ## 4. allot.dev (static site)
 

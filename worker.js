@@ -12,7 +12,7 @@
 // optional: GIT_COMMIT (the commit of github.com/byte402/allot-api this code was copied from, shown at /version)
 const RPC = "https://rpc.mainnet.chain.robinhood.com", KYBER = "https://aggregator-api.kyberswap.com/robinhood/api/v1";
 const USDG = "0x5fc5360d0400a0fd4f2af552add042d716f1d168";
-const VERSION = "4.2.0", SOURCE = "https://github.com/byte402/allot-api";
+const VERSION = "4.3.0", SOURCE = "https://github.com/byte402/allot-api";
 const UA = `allot-api/${VERSION} (+https://allot.dev)`;
 const T_TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const T_AUTH_USED = "0x98de503528ee59b575ef0c0a2576a82497bfc029a5685b209e9ec333479b10a5";
@@ -141,20 +141,28 @@ const ROUTES = {
 };
 const usdg = (p) => fmtUnits(p, 6) + " USDG";
 
+// Cloudflare Workers entry. Settled transactions are remembered in Cloudflare's cache (per data center).
 export default {
-  async fetch(req, env) {
+  fetch(req, env) {
+    const cache = caches.default, key = (tx) => new Request(`https://used.allot/${tx}`);
+    return handle(req, env, { has: async (tx) => !!(await cache.match(key(tx))), add: (tx) => cache.put(key(tx), new Response("1", { headers: { "cache-control": "max-age=86400" } })) });
+  },
+};
+// The whole API, for any runtime that speaks Request/Response (Cloudflare, Netlify, Node 18+).
+// used: { has(tx), add(tx) } remembers settled transactions so one transaction buys one answer.
+export async function handle(req, env, used) {
     const url = new URL(req.url);
     if (req.method === "OPTIONS") return new Response(null, { headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "payment-signature, content-type" } });
     if (url.pathname === "/") return json({ name: "Allot sample x402 API", endpoints: Object.fromEntries(Object.entries(ROUTES).map(([p, r]) => [r.ex || p, usdg(r.price)])), symbols: Object.keys(MARKETS), tokens: Object.keys(TOKENS), network: "eip155:4663", asset: USDG, payTo: env.PAY_TO, version: VERSION, source: SOURCE });
     // free: which code is this? The deployer sets GIT_COMMIT; compare it with the repo's history
-    if (url.pathname === "/version") { const c = lower(env.GIT_COMMIT), m = env.CF_VERSION_METADATA || {}, ok = /^[0-9a-f]{7,40}$/.test(c);
+    if (url.pathname === "/version") { const c = lower(env.GIT_COMMIT), m = env.CF_VERSION_METADATA || env.DEPLOYMENT || {}, ok = /^[0-9a-f]{7,40}$/.test(c);
       return json({ name: "allot-api", version: VERSION, source: SOURCE, commit: ok ? c : null, code: ok ? `${SOURCE}/blob/${c}/worker.js` : `${SOURCE}/blob/main/worker.js`, deployment: m.id ? { id: m.id, tag: m.tag || null, at: m.timestamp || null } : null,
-        note: "Set by whoever deployed this worker. A server cannot prove its own code: check that the answers and the on-chain checks behave as the source says." }); }
+        note: "Reported by this server. A server cannot prove its own code: check that the answers and the on-chain checks behave as the source says." }); }
     // free check, no data: are the sources reachable from here? Lets anyone test before paying
     if (url.pathname === "/health") { let priceSource, chain; try { await livePrice("NVDA"); priceSource = "ok"; } catch (e) { priceSource = e.message; } try { await rpc("eth_blockNumber", []); chain = "ok"; } catch (e) { chain = e.message; } return json({ ok: priceSource === "ok" && chain === "ok", priceSource, chain, version: VERSION }); }
     const route = ROUTES[url.pathname];
     if (!route) return json({ error: "not found", endpoints: Object.keys(ROUTES) }, 404);
-    if (!/^0x[0-9a-fA-F]{40}$/.test(env.PAY_TO || "") || String(env.CHALLENGE_SECRET || "").length < 32) return json({ error: "API not configured yet: set PAY_TO (address) and CHALLENGE_SECRET (secret, 32+ characters) in Settings, Variables and Secrets" }, 503);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(env.PAY_TO || "") || String(env.CHALLENGE_SECRET || "").length < 32) return json({ error: "API not configured yet: set PAY_TO (address) and CHALLENGE_SECRET (secret, 32+ characters) in the host's environment variables" }, 503);
     let job; try { job = route.parse(url.searchParams); } catch (e) { return json(e.error ? e : { error: String(e.message || e) }, 400); }
     // the resource is canonical, so the nonce binds the payment to exactly this request
     const resource = `${url.origin}${url.pathname}${job.query ? "?" + job.query : ""}`, header = req.headers.get("payment-signature") || req.headers.get("x-payment");
@@ -164,10 +172,9 @@ export default {
     catch (e) { return json({ error: "could not read the payment right now (" + e.message + "). It is not used yet: send the same payment-signature header again" }, 503, { "retry-after": "5" }); }
     if (why) return ask(why);
     // one tx, one response: remember settled transactions for a day
-    const tx = unb64(header).payload.settlementTx, key = new Request(`https://used.allot/${tx}`), cache = caches.default;
-    if (await cache.match(key)) return json({ error: "this payment was already used" }, 402);
+    const tx = lower(unb64(header).payload.settlementTx); // lower case, so the same hash cannot be replayed in another case
+    if (await used.has(tx)) return json({ error: "this payment was already used" }, 402);
     let data; try { data = await job.run(); } catch (e) { return json({ error: e.message + ", your payment is not used yet: retry with the same header" }, e.bad ? 400 : 503); }
-    await cache.put(key, new Response("1", { headers: { "cache-control": "max-age=86400" } })); // longer than any offer can stay valid
+    await used.add(tx); // kept at least a day: longer than any offer can stay valid
     return json(data, 200, { "payment-response": b64({ success: true, network: "eip155:4663", transaction: tx }) });
-  },
-};
+}

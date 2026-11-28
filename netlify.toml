@@ -1,0 +1,8 @@
+# Netlify: deploys this repo straight from GitHub. The build writes the commit being deployed into
+# netlify/functions/commit.mjs, so /version names the exact commit without any manual step.
+[build]
+  command = "echo \"export const COMMIT = '$COMMIT_REF';\" > netlify/functions/commit.mjs"
+  publish = "public"
+
+[functions]
+  node_bundler = "esbuild"
