@@ -49,7 +49,7 @@ Events (`AgentSet`, `PayeeSet`, `Paid`, `Authorized`, `Released`, `Frozen`, `Wit
 
 - Plain HTML and JavaScript on GitHub Pages, no backend and no database.
 - Writes (create vault, add agent, set payee, freeze, withdraw) are prepared in the page, simulated, then signed in the user's own wallet.
-- The Ledger reads vault events straight from the public RPC. The RPC caps queries with several addresses at 100,000 blocks, so the Ledger asks for each vault's logs separately over its full history.
+- The Ledger reads vault events straight from the public RPC. In our use the RPC refused long-range `eth_getLogs` filters with several addresses in one position, while single-address filters passed, so the Ledger asks for each vault's logs separately over its full history.
 
 ## Trust summary
 
