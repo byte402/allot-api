@@ -9,7 +9,7 @@ Try it: https://allot-api.polished-dream-0948.workers.dev/v1/price?symbol=NVDA (
 | Path | Price | Returns |
 | --- | --- | --- |
 | `/` | free | info, symbols, payee |
-| `/health` | free | whether the price source and the chain answer |
+| `/health` | free | whether the price source, the chain and the payment record store answer |
 | `/version` | free | version, source repo and the commit this deployment says it runs |
 | `/v1/price?symbol=NVDA` | 0.01 USDG | one market price, from a live quote of 1,000 USDG via KyberSwap |
 | `/v1/prices` | 0.02 USDG | every market price in one call |

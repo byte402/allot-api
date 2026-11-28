@@ -12,7 +12,7 @@
 // optional: GIT_COMMIT (the commit of github.com/byte402/allot-api this code was copied from, shown at /version)
 const RPC = "https://rpc.mainnet.chain.robinhood.com", KYBER = "https://aggregator-api.kyberswap.com/robinhood/api/v1";
 const USDG = "0x5fc5360d0400a0fd4f2af552add042d716f1d168";
-const VERSION = "4.3.0", SOURCE = "https://github.com/byte402/allot-api";
+const VERSION = "4.3.1", SOURCE = "https://github.com/byte402/allot-api";
 const UA = `allot-api/${VERSION} (+https://allot.dev)`;
 const T_TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const T_AUTH_USED = "0x98de503528ee59b575ef0c0a2576a82497bfc029a5685b209e9ec333479b10a5";
@@ -159,7 +159,8 @@ export async function handle(req, env, used) {
       return json({ name: "allot-api", version: VERSION, source: SOURCE, commit: ok ? c : null, code: ok ? `${SOURCE}/blob/${c}/worker.js` : `${SOURCE}/blob/main/worker.js`, deployment: m.id ? { id: m.id, tag: m.tag || null, at: m.timestamp || null } : null,
         note: "Reported by this server. A server cannot prove its own code: check that the answers and the on-chain checks behave as the source says." }); }
     // free check, no data: are the sources reachable from here? Lets anyone test before paying
-    if (url.pathname === "/health") { let priceSource, chain; try { await livePrice("NVDA"); priceSource = "ok"; } catch (e) { priceSource = e.message; } try { await rpc("eth_blockNumber", []); chain = "ok"; } catch (e) { chain = e.message; } return json({ ok: priceSource === "ok" && chain === "ok", priceSource, chain, version: VERSION }); }
+    if (url.pathname === "/health") { let priceSource, chain; try { await livePrice("NVDA"); priceSource = "ok"; } catch (e) { priceSource = e.message; } try { await rpc("eth_blockNumber", []); chain = "ok"; } catch (e) { chain = e.message; } let replayStore = "cache"; if (used?.check) { try { await used.check(); replayStore = "ok"; } catch (e) { replayStore = e.message; } }
+      return json({ ok: priceSource === "ok" && chain === "ok" && (replayStore === "ok" || replayStore === "cache"), priceSource, chain, replayStore, version: VERSION }); }
     const route = ROUTES[url.pathname];
     if (!route) return json({ error: "not found", endpoints: Object.keys(ROUTES) }, 404);
     if (!/^0x[0-9a-fA-F]{40}$/.test(env.PAY_TO || "") || String(env.CHALLENGE_SECRET || "").length < 32) return json({ error: "API not configured yet: set PAY_TO (address) and CHALLENGE_SECRET (secret, 32+ characters) in the host's environment variables" }, 503);
@@ -173,8 +174,9 @@ export async function handle(req, env, used) {
     if (why) return ask(why);
     // one tx, one response: remember settled transactions for a day
     const tx = lower(unb64(header).payload.settlementTx); // lower case, so the same hash cannot be replayed in another case
-    if (await used.has(tx)) return json({ error: "this payment was already used" }, 402);
+    let seen; try { seen = await used.has(tx); } catch (e) { return json({ error: "could not check the payment record right now. It is not used yet: send the same payment-signature header again" }, 503, { "retry-after": "5" }); }
+    if (seen) return json({ error: "this payment was already used" }, 402);
     let data; try { data = await job.run(); } catch (e) { return json({ error: e.message + ", your payment is not used yet: retry with the same header" }, e.bad ? 400 : 503); }
-    await used.add(tx); // kept at least a day: longer than any offer can stay valid
+    try { await used.add(tx); } catch (e) { console.error("could not record", tx, e?.message); } // kept at least a day: longer than any offer can stay valid
     return json(data, 200, { "payment-response": b64({ success: true, network: "eip155:4663", transaction: tx }) });
 }
